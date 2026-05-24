@@ -2,6 +2,7 @@ package edu.ucsd.idekerlab.cytoscapemcp;
 
 import java.util.Dictionary;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -26,9 +27,36 @@ public class CyActivatorInitTest {
     /**
      * Subclass that overrides doInitializeApp() to avoid real OSGi/Swing dependencies while still
      * exercising the real guard logic in initializeApp().
+     *
+     * <p>Uses constructor injection ({@link
+     * CyActivator#CyActivator(CyActivator.CxServiceTrackerFactory)}) with a factory that calls
+     * {@link #initializeApp()} synchronously — no live OSGi runtime needed. The {@link
+     * AtomicReference} self-reference pattern avoids the chicken-and-egg problem of passing {@code
+     * this} before the object is fully constructed.
      */
     static class TestableCyActivator extends CyActivator {
         final AtomicInteger realInitCount = new AtomicInteger(0);
+
+        private TestableCyActivator(CxServiceTrackerFactory factory) {
+            super(factory);
+        }
+
+        /**
+         * Creates a {@link TestableCyActivator} whose injected factory calls {@link
+         * #initializeApp()} immediately, simulating a dynamic install where the CX reader service
+         * is already registered when the tracker is opened.
+         */
+        static TestableCyActivator create() {
+            AtomicReference<TestableCyActivator> selfRef = new AtomicReference<>();
+            TestableCyActivator a =
+                    new TestableCyActivator(
+                            (bc, filter) -> {
+                                selfRef.get().initializeApp();
+                                return null; // no real tracker needed in tests
+                            });
+            selfRef.set(a);
+            return a;
+        }
 
         @Override
         void doInitializeApp() {
@@ -53,7 +81,7 @@ public class CyActivatorInitTest {
 
     @Before
     public void setUp() {
-        activator = new TestableCyActivator();
+        activator = TestableCyActivator.create();
     }
 
     @Test
@@ -69,7 +97,7 @@ public class CyActivatorInitTest {
     public void start_dynamicInstall_initializesImmediately() throws Exception {
         activator.start(mockBundleContext(true));
         assertEquals(
-                "should init directly when AvailableCommands is already in registry",
+                "should init when CX reader service tracker fires on dynamic install",
                 1,
                 activator.realInitCount.get());
     }
@@ -87,8 +115,8 @@ public class CyActivatorInitTest {
 
     @Test
     public void start_bothPathsTrigger_initializesExactlyOnce() throws Exception {
-        // Simulate race: AvailableCommands present (probe triggers) AND listener fires too.
-        activator.start(mockBundleContext(true)); // probe path
+        // Simulate race: AvailableCommands present (tracker fires) AND listener fires too.
+        activator.start(mockBundleContext(true)); // tracker path
         activator.initializeApp(); // listener path (fires again)
         assertEquals(
                 "real init should run only once even if both trigger paths fire",

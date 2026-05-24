@@ -15,6 +15,9 @@ import javax.swing.UIManager;
 
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleEvent;
+import org.osgi.framework.Filter;
+import org.osgi.framework.ServiceReference;
+import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +56,21 @@ import io.modelcontextprotocol.server.McpSyncServer;
 
 public class CyActivator extends AbstractCyActivator {
 
+    /**
+     * Creates the {@link ServiceTracker} used in the dynamic-install startup path. Extracted so
+     * unit tests can inject a fake that fires {@link #initializeApp()} synchronously without
+     * requiring a live OSGi runtime.
+     */
+    @FunctionalInterface
+    interface CxServiceTrackerFactory {
+        /**
+         * @return a tracker ready to be {@code open()}ed, or {@code null} if the caller should skip
+         *     opening (test-only shortcut).
+         */
+        ServiceTracker<InputStreamTaskFactory, InputStreamTaskFactory> create(
+                BundleContext bc, Filter filter);
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CyActivator.class);
 
     private volatile McpSyncServer mcpServer;
@@ -61,6 +79,57 @@ public class CyActivator extends AbstractCyActivator {
     private volatile CommandService commandService;
     private volatile CommandETLService commandETLService;
     private final AtomicBoolean initDone = new AtomicBoolean(false);
+    private volatile ServiceTracker<InputStreamTaskFactory, InputStreamTaskFactory>
+            cxServiceTracker;
+    private final CxServiceTrackerFactory cxServiceTrackerFactory;
+    // Package-private so CyActivatorToolbarTest can verify removal without reflection.
+    volatile McpStatusPanel mcpStatusPanel;
+
+    /** OSGi-mandated public no-arg constructor — uses the real {@link ServiceTracker}. */
+    public CyActivator() {
+        this.cxServiceTrackerFactory = new RealCxServiceTrackerFactory(this);
+    }
+
+    /**
+     * Package-private constructor for unit tests — callers inject a {@link CxServiceTrackerFactory}
+     * that simulates service availability without a live OSGi runtime.
+     */
+    CyActivator(CxServiceTrackerFactory factory) {
+        this.cxServiceTrackerFactory = factory;
+    }
+
+    /**
+     * Production {@link CxServiceTrackerFactory}: creates a real OSGi {@link ServiceTracker} that
+     * calls {@link CyActivator#initializeApp()} when {@code cytoscapeCxNetworkReaderFactory}
+     * becomes available.
+     */
+    private static final class RealCxServiceTrackerFactory implements CxServiceTrackerFactory {
+        private final CyActivator owner;
+
+        RealCxServiceTrackerFactory(CyActivator owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public ServiceTracker<InputStreamTaskFactory, InputStreamTaskFactory> create(
+                BundleContext bc, Filter filter) {
+            return new ServiceTracker<InputStreamTaskFactory, InputStreamTaskFactory>(
+                    bc, filter, null) {
+                @Override
+                public InputStreamTaskFactory addingService(
+                        ServiceReference<InputStreamTaskFactory> reference) {
+                    InputStreamTaskFactory svc = super.addingService(reference);
+                    try {
+                        owner.initializeApp();
+                    } catch (Exception e) {
+                        LOGGER.error(
+                                "Failed to start Cytoscape MCP Server (dynamic install path)", e);
+                    }
+                    return svc;
+                }
+            };
+        }
+    }
 
     /**
      * Reads app properties from cytoscapemcp.props bundled in the JAR, then merges any user
@@ -97,21 +166,52 @@ public class CyActivator extends AbstractCyActivator {
 
         // Dynamic-install path: when the app is installed via the app store while Cytoscape is
         // already running, AppsFinishedStartingEvent has already fired and will never fire again.
-        // AvailableCommands is registered only after the full startup sequence completes — its
-        // presence in the registry means the desktop is already up.
+        // Use a ServiceTracker on cytoscapeCxNetworkReaderFactory instead of calling
+        // initializeApp() directly. For a true dynamic install, the CX IO service is already
+        // registered so addingService() fires synchronously on open() — no race. During initial
+        // startup this tracker fires when org.cytoscape.io.cx activates (bundle 132), which
+        // also ensures all peers are up; initDone prevents double-init if AppsFinishedStartingEvent
+        // fires around the same time.
         if (bc.getServiceReference(AvailableCommands.class) != null) {
-            LOGGER.info("Desktop already running — initializing MCP server directly");
+            LOGGER.info(
+                    "Desktop already running — installing ServiceTracker for dynamic-install init");
             try {
-                initializeApp();
-            } catch (Exception e) {
-                LOGGER.error("Failed to start Cytoscape MCP Server (dynamic install path)", e);
+                Filter filter =
+                        bc.createFilter(
+                                "(&(objectClass=org.cytoscape.io.read.InputStreamTaskFactory)"
+                                        + "(id=cytoscapeCxNetworkReaderFactory))");
+                cxServiceTracker = cxServiceTrackerFactory.create(bc, filter);
+                if (cxServiceTracker != null) {
+                    cxServiceTracker.open();
+                }
+            } catch (org.osgi.framework.InvalidSyntaxException e) {
+                LOGGER.error("Invalid OSGi filter for CX reader service tracker", e);
             }
         }
     }
 
     @Override
     public void shutDown() {
+        if (cxServiceTracker != null) {
+            cxServiceTracker.close();
+            cxServiceTracker = null;
+        }
         stopServers();
+        // Remove the toolbar button on the EDT. removeNotify() on McpStatusPanel automatically
+        // shuts down its liveness-probe scheduler when the component leaves the hierarchy.
+        McpStatusPanel panel = mcpStatusPanel;
+        if (panel != null) {
+            SwingUtilities.invokeLater(
+                    () -> {
+                        Container parent = panel.getParent();
+                        if (parent != null) {
+                            parent.remove(panel);
+                            parent.revalidate();
+                            parent.repaint();
+                            LOGGER.info("MCP status panel removed from status bar");
+                        }
+                    });
+        }
         super.shutDown();
     }
 
@@ -285,17 +385,19 @@ public class CyActivator extends AbstractCyActivator {
         }
 
         // Add the MCP toolbar button to the status bar on the Swing EDT.
-        final int finalCyRestPort = cyRestPort;
+        // The panel is created synchronously here so mcpStatusPanel is set before invokeLater
+        // returns — this avoids a race where shutDown() could be called before the EDT task runs.
         final CySwingApplication finalSwingApp = cySwingApp;
+        McpStatusPanel panel = new McpStatusPanel(cyRestPort);
+        mcpStatusPanel = panel;
         SwingUtilities.invokeLater(
                 () -> {
                     JToolBar toolbar = finalSwingApp.getStatusToolBar();
                     if (toolbar != null) {
-                        McpStatusPanel mcpPanel = new McpStatusPanel(finalCyRestPort);
-                        boolean injected = injectIntoStatusBar(toolbar, mcpPanel);
+                        boolean injected = injectIntoStatusBar(toolbar, panel);
                         if (!injected) {
                             // Fallback: prepend to statusToolBar directly
-                            toolbar.add(mcpPanel, 0);
+                            toolbar.add(panel, 0);
                             toolbar.revalidate();
                             toolbar.repaint();
                         }

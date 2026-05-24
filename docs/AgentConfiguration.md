@@ -24,7 +24,6 @@ To verify: the **Cytoscape MCP** connector will appear in **Customize > Connecto
 This screen will display the CyREST port as a config defaulted to 1234, change that if you have changed the CyRest port on Desktop as
 the mcp server is hosted on CyRest.
 
-```
 ---
 
 ## Claude Code
