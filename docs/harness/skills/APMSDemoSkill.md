@@ -13,55 +13,58 @@ load a new network view in cytoscape from the ap-ms-demodata.csv tabular file pr
 ### Step 3
 filter the node table by selecting all rows that have HekScore < .780 and deleting those rows from node table as we want to focus on kidney cells. 
 
-### Step 3.5
+### Step 4
 extract the values from name column of node table to a new temp file that is just one long comma separated string of each name.
 
-### Step 4
+### Step 5
 submit the string of node names as a string network protein query with .999 confidence, specify a unique name of 'ap-ms demo string network xx' to avoid creating a new string network with duplicate collision on any pre-existing networks with same name on desktop. 
 
-### Step 5
+### Step 6
 merge the new string network into the original ap ms network created from Step #2 as a union using query term to name respectively for matching nodes.
 
-### Step 6
+### Step 7
 set the style to default on the merged network.
 
-### Step 7
+### Step 8
 create a unique newly named style called 'demo style XX' from current style and switch to new style, XX is used for duplication buster, avoid name collision if other styles exist with same prefix.
 
-### Step 8
+### Step 9
 set the layout to prefuse force directed with spring length of 100 and default node mass to 3.
 
-### Step 9
+### Step 10
 change the node shape to ellipse and lock node width and height and set node size to 50.
 
-### Step 10
+### Step 11
 set default node fill color to light grey.
 
-### Step 11
-set passthrough mapping of node label to display name. 
-
 ### Step 12
-Create a continuous mapping for the node Fill Color using the JurkatScore column and use a purple gradient palette.
+Create a continuous mapping for the node Fill Color using the HekScore column and use a purple gradient palette.
 
 ### Step 13
 set default node fill color to orange.
 
 ### Step 14
-set continuous mapping on edge width based on 'ap ms score' between 1 and 5.
-
-### Step 15
 perform string functional enrichment and show the string enrichment tab in cytoscape.
 
-### Step 16
+### Step 15
 add a filter to the string functional enrichment table to only show rows that have category value equal to the exact term of "GO Biological Process" and remove redundant terms.
 
-### Step 17
+### Step 16
 add a split donut chart onto nodes which represents top terms from the filtered string enrichment table.
 
+### Step 17
+set passthrough mapping of node label to display name. 
+
 ### Step 18
-Create a Discrete mapping for edge stroke Color on the interaction column to green if the interaction column value is empty or null. 
+set continuous mapping on edge width based on 'ap ms score' between 1 and 5.
 
 ### Step 19
+Set default edge stroke Color to green.
+
+### Step 20
+Create a Discrete mapping for edge stroke Color on the interaction column to grey if the interaction column value is 'pp'
+
+### Step 21
 export a png image of current networkview with a new unique filename of apms-demo-<current_timestamp>.png.
 
 
