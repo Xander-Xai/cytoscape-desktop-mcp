@@ -43,11 +43,23 @@ AI Agent──► HTTP──► http://localhost:{rest.port}/mcp ──► Cytos
 * An MCP-compatible AI client that also supports the Streamable HTTP transport(not SSE which is [deprecated as of 02/2025](https://auth0.com/blog/mcp-streamable-http/)) (e.g. Claude Desktop)
 
 ## Try it! 
-Get the mcp app jar:
+
+### Install from the Cytoscape App Store (recommended)
+
+Install **Cytoscape MCP Server** from the App Store — this is the MCP server itself, and everything
+else on this page depends on it being installed and running:
+
+* <https://apps.cytoscape.org/apps/cytoscapemcpserver>
+
+Or from inside Cytoscape: **Apps > App Manager**, search for `Cytoscape MCP Server`, and install.
+
+### Install a JAR manually
+
+Alternatively, get the app jar:
 * Download the latest `cytoscape-mcp-<VERSION>.jar` from the [Releases](../../releases) page.
 * or [Build](#building-from-source) the jar  
 
-### Cytoscape Desktop Installation
+Then:
 1. Open Cytoscape Desktop.
 2. Navigate to **Apps > App Manager > Install from File**.
 3. Select the file path to the MCP App JAR and restart Cytoscape if prompted.

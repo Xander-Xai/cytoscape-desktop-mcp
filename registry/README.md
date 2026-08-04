@@ -8,6 +8,18 @@ io.github.cytoscape/cytoscape-desktop-mcp-bridge
 
 `server.json` is a **template**. Its `version`, the mcpb `identifier`, and `fileSha256` are `PLACEHOLDER`/`0.0.0` on purpose — `make stamp-server-json` fills them in and writes `build/server.json`. The tracked file is never mutated by a release.
 
+## What the user must have installed
+
+Whatever a client installs from this registry entry — the `.mcpb` or the npm package — it is **only a transport passthrough**. It carries no tools. The MCP server itself is hosted inside Cytoscape Desktop by the Cytoscape MCP Server app, served from Cytoscape's built-in CyREST HTTP server.
+
+So an install from the registry is only half the setup. The user also needs:
+
+1. **Cytoscape Desktop** 3.10 or later — <https://cytoscape.org>
+2. The **Cytoscape MCP Server** app — <https://apps.cytoscape.org/apps/cytoscapemcpserver>
+3. Cytoscape **running**, with that app enabled
+
+The registry schema has nowhere to express this. `description` is capped at 100 characters and there is no prerequisite field, so the only places it can be stated are `websiteUrl` (the repo README), the `.mcpb` manifest description that Claude Desktop shows at install time, and the npm package README. Keep all three saying it.
+
 ## What gets published, and what does not
 
 The registry hosts metadata only. The entry lists two packagings of the **bridge**, side by side:
@@ -19,7 +31,7 @@ The registry hosts metadata only. The entry lists two packagings of the **bridge
 
 These are parallel, not layered — a client picks whichever it supports; neither wraps the other. The npm package exists so registry-driven and marketplace installers have something installable to wrap. **It is intentionally not documented as an end-user option** in `docs/AgentConfiguration.md`: any client that can run `npx` can almost certainly take the HTTP URL directly, which is strictly better.
 
-The Cytoscape App JAR has **no** registrable package type. The registry entry therefore describes only the bridge; users still need Cytoscape with the app installed for it to reach anything.
+The Cytoscape App JAR has **no** registrable package type — it is distributed through the [Cytoscape App Store](https://apps.cytoscape.org/apps/cytoscapemcpserver), which the registry knows nothing about. The registry entry therefore describes only the bridge, which is why the prerequisites above have to be communicated out of band.
 
 ## Versioning
 
