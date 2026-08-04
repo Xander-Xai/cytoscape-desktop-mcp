@@ -1,12 +1,23 @@
 name: Release
 
+# Two components ship from this repo on separate tag namespaces:
+#   vX.Y.Z        -> Cytoscape App JAR  (release-app)
+#   mcpb-vX.Y.Z   -> MCPB bridge        (release-mcpb, publishes npm + MCP Registry)
+#
+# The `release` event supports only `types:` filtering — there is no tag-pattern
+# filter as with `on: push: tags:` — so the branch is a job-level `if:`. Both jobs
+# trigger on every release and one always reports as skipped. That is expected.
 on:
   release:
     types: [published]
 
 jobs:
   build-release:
+    name: Release Cytoscape App JAR
+    if: "!startsWith(github.event.release.tag_name, 'mcpb-v')"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -36,6 +47,9 @@ jobs:
     - name: Build release JAR
       run: xvfb-run make install-release VERSION=${{ steps.version.outputs.version }}
 
+    # Convenience copy of the bridge bundle, so the app release page stays
+    # self-sufficient for users. The registry only ever pins the copy attached
+    # to an mcpb-v release; the deterministic zip keeps the two byte-identical.
     - name: Build Claude Desktop extension
       run: make build_claude_mcpb
 
@@ -47,3 +61,46 @@ jobs:
           --clobber
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-mcpb:
+    name: Release MCPB bridge
+    if: startsWith(github.event.release.tag_name, 'mcpb-v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC -> io.github.cytoscape/* namespace on the MCP Registry
+      contents: write   # gh release upload
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # No JDK: build_claude_mcpb is pure cp/zip, and nothing here touches Gradle.
+    - name: Set up Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: 'lts/*'
+        registry-url: https://registry.npmjs.org
+
+    # Fails loudly if the tag and claude-extension/manifest.json disagree.
+    - name: Verify tag matches bridge manifest
+      run: make check-bridge-version TAG=${{ github.event.release.tag_name }}
+
+    - name: Build bundle
+      run: make build_claude_mcpb
+
+    - name: Upload bundle to release
+      run: |
+        gh release upload "${{ github.event.release.tag_name }}" \
+          "build/cytoscape-mcp.mcpb" \
+          --clobber
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # RC tags build and upload but never publish: an RC would otherwise consume
+    # the version in the registry and pin the RC's asset permanently, after which
+    # the guard would silently skip the final release.
+    - name: Publish to npm and the MCP Registry
+      if: "!contains(github.event.release.tag_name, '-rc.')"
+      run: make publish-registry TAG=${{ github.event.release.tag_name }}
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

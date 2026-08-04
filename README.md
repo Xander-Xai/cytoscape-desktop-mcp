@@ -75,8 +75,8 @@ Requirements:
 * [Make][make]
 
 ```bash
-git clone https://github.com/idekerlab/cytoscape-mcp
-cd cytoscape-mcp
+git clone https://github.com/cytoscape/cytoscape-desktop-mcp
+cd cytoscape-desktop-mcp
 make install
 ```
 
@@ -86,6 +86,20 @@ For a full list of build targets:
 ```bash
 make help
 ```
+
+### Release tags
+
+Two components ship from this repo on separate tag namespaces:
+
+| Component | Tag | Produces |
+|-----------|-----|----------|
+| Cytoscape App (the MCP server) | `vX.Y.Z` | `cytoscape-mcp-<VERSION>.jar`, plus a convenience copy of the `.mcpb` |
+| MCPB bridge (`claude-extension/`) | `mcpb-vX.Y.Z` | `cytoscape-mcp.mcpb`, and publishes to npm and the MCP Registry |
+
+The bridge is versioned independently of the app because it contains no tools — it is
+transport plumbing only. `claude-extension/manifest.json`'s `version` is its source of
+truth and is deliberately *not* kept in step with the JAR version. See
+[registry/README.md](registry/README.md) for the release runbook.
 
 ## Cytoscape Desktop MCP Tool Catalog
 The MCP server provides a human-readable catalog of every tool registered on the server formatted as Markdown with complete MCP Protocol JSON schema definitions for each tool's input and output. You can obtain the catalog through multiple options:

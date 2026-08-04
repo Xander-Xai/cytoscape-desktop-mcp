@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Cytoscape MCP stdio↔HTTP bridge — pure Node.js built-ins, no dependencies.
  *
