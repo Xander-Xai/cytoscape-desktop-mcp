@@ -58,7 +58,14 @@ Note `mcp-publisher validate` checks shape against the live registry but **not**
 
 ## Authentication
 
-`NPM_TOKEN` must be set as a repo secret for the npm publishing to work.
+No secrets. Both publishes authenticate with the release job's GitHub OIDC identity, which is why it declares `permissions: id-token: write`.
+
+- **MCP Registry** — `mcp-publisher login github-oidc` exchanges the OIDC token for a registry JWT scoped to `io.github.cytoscape/*`.
+- **npm** — [trusted publishing](https://docs.npmjs.com/trusted-publishers/), configured on the package at npmjs.com: organization `cytoscape`, repository `cytoscape-desktop-mcp`, workflow filename `release.yml`, allowed action `npm publish`.
+
+Do not add an `NPM_TOKEN`. `setup-node` writes `_authToken=${NODE_AUTH_TOKEN}` into `.npmrc`; if that resolves to an empty string npm sends a blank credential and fails with 401 rather than falling back to OIDC.
+
+Trusted publishing cannot create a package — npm requires it to exist first — so the very first version of a new package must be published manually by a member of the `cytoscape` org.
 
 ## Gotchas
 

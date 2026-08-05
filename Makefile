@@ -181,10 +181,10 @@ stamp-server-json: check-bridge-version
 	fi; \
 	echo "stamped $(STAMPED) for $$BRIDGE_VER"
 
-# The publisher is a downloaded third-party binary, so it is invoked with
-# NODE_AUTH_TOKEN stripped — only `npm publish` in publish-npm-bridge needs the npm
-# credential. The registry validates the npm package server-side, so the publisher
-# never talks to npm authenticated.
+# Neither publish uses a stored credential: npm authenticates via trusted
+# publishing and the publisher via `login github-oidc`, both from the job's
+# GitHub OIDC identity. There is no npm token in the environment to shield the
+# downloaded publisher binary from.
 publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	@BRIDGE_VER=$$(jq -r .version $(BRIDGE_MANIFEST)); \
 	if curl -sf "$(REGISTRY)/v0.1/servers?search=$(SERVER_NAME)" \
@@ -194,7 +194,7 @@ publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	else \
 	  if [ -n "$$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then AUTH=github-oidc; else AUTH=github; fi; \
 	  echo "authenticating with $$AUTH"; \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) login $$AUTH && \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) validate $(STAMPED) && \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) publish $(STAMPED); \
+	  $(PUBLISHER) login $$AUTH && \
+	  $(PUBLISHER) validate $(STAMPED) && \
+	  $(PUBLISHER) publish $(STAMPED); \
 	fi
