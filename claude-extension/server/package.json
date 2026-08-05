@@ -1,0 +1,26 @@
+{
+  "name": "@cytoscape/cytoscape-desktop-mcp-bridge",
+  "version": "0.0.0",
+  "mcpName": "io.github.cytoscape/cytoscape-desktop-mcp-bridge",
+  "description": "stdio-to-HTTP bridge connecting MCP clients to a running Cytoscape Desktop",
+  "bin": {
+    "cytoscape-mcp-bridge": "index.js"
+  },
+  "keywords": [
+    "mcp",
+    "cytoscape",
+    "modelcontextprotocol"
+  ],
+  "files": [
+    "index.js"
+  ],
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cytoscape/cytoscape-desktop-mcp.git",
+    "directory": "claude-extension/server"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

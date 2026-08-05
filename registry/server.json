@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cytoscape/cytoscape-desktop-mcp-bridge",
+  "title": "Cytoscape Desktop MCP",
+  "description": "Drive a running Cytoscape Desktop to load, lay out, and style biological networks.",
+  "version": "__BRIDGE_VERSION__",
+  "websiteUrl": "https://github.com/cytoscape/cytoscape-desktop-mcp",
+  "repository": {
+    "url": "https://github.com/cytoscape/cytoscape-desktop-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/cytoscape/cytoscape-desktop-mcp/releases/download/__BRIDGE_RELEASE_TAG__/cytoscape-mcp.mcpb",
+      "fileSha256": "__BRIDGE_MCPB_SHA256__",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CYREST_PORT",
+          "description": "Port Cytoscape Desktop's REST interface listens on (Edit > Preferences > REST API)",
+          "default": "1234",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "registryType": "npm",
+      "identifier": "@cytoscape/cytoscape-desktop-mcp-bridge",
+      "version": "__BRIDGE_VERSION__",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CYREST_PORT",
+          "description": "Port Cytoscape Desktop's REST interface listens on (Edit > Preferences > REST API)",
+          "default": "1234",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

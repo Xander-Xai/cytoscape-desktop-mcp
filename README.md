@@ -6,8 +6,7 @@
 [mcp]: https://modelcontextprotocol.io/
 [ndex]: https://www.ndexbio.org/
 
-Cytoscape MCP Server
-=======================================
+# Cytoscape MCP Server
 
 An embedded [Model Context Protocol (MCP)][mcp] server for [Cytoscape Desktop][cytoscape], packaged as a Cytoscape App. AI clients such as Claude Desktop connect to Cytoscape over HTTP and invoke tools that control the desktop application directly — loading networks, setting active views, and more.
 
@@ -43,11 +42,23 @@ AI Agent──► HTTP──► http://localhost:{rest.port}/mcp ──► Cytos
 * An MCP-compatible AI client that also supports the Streamable HTTP transport(not SSE which is [deprecated as of 02/2025](https://auth0.com/blog/mcp-streamable-http/)) (e.g. Claude Desktop)
 
 ## Try it! 
-Get the mcp app jar:
+
+### Install from the Cytoscape App Store (recommended)
+
+Install **Cytoscape MCP Server** from the App Store — this is the MCP server itself, and everything
+else on this page depends on it being installed and running:
+
+* <https://apps.cytoscape.org/apps/cytoscapemcpserver>
+
+Or from inside Cytoscape: **Apps > App Manager**, search for `Cytoscape MCP Server`, and install.
+
+### Install a JAR manually
+
+Alternatively, get the app jar:
 * Download the latest `cytoscape-mcp-<VERSION>.jar` from the [Releases](../../releases) page.
 * or [Build](#building-from-source) the jar  
 
-### Cytoscape Desktop Installation
+Then:
 1. Open Cytoscape Desktop.
 2. Navigate to **Apps > App Manager > Install from File**.
 3. Select the file path to the MCP App JAR and restart Cytoscape if prompted.
@@ -75,8 +86,8 @@ Requirements:
 * [Make][make]
 
 ```bash
-git clone https://github.com/idekerlab/cytoscape-mcp
-cd cytoscape-mcp
+git clone https://github.com/cytoscape/cytoscape-desktop-mcp
+cd cytoscape-desktop-mcp
 make install
 ```
 
@@ -86,6 +97,18 @@ For a full list of build targets:
 ```bash
 make help
 ```
+
+### Release tags
+
+Two components ship from this repo on separate tag namespaces:
+
+| Component | Tag | Produces |
+|-----------|-----|----------|
+| Cytoscape App (the MCP server) | `vX.Y.Z` | `cytoscape-mcp-<VERSION>.jar`, plus a convenience copy of the `.mcpb` |
+| MCPB bridge (`claude-extension/`) | `mcpb-vX.Y.Z` | `cytoscape-mcp.mcpb`, and publishes to npm and the MCP Registry |
+
+The bridge is versioned independently of the app because the bridge is distinctly separate deliverable with separate source tree for it to provide a stdio-to-http transport bridge that some agents may use. See
+[registry/README.md](registry/README.md) for the release runbook.
 
 ## Cytoscape Desktop MCP Tool Catalog
 The MCP server provides a human-readable catalog of every tool registered on the server formatted as Markdown with complete MCP Protocol JSON schema definitions for each tool's input and output. You can obtain the catalog through multiple options:
