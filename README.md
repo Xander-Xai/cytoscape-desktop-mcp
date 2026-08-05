@@ -108,9 +108,7 @@ Two components ship from this repo on separate tag namespaces:
 | Cytoscape App (the MCP server) | `vX.Y.Z` | `cytoscape-mcp-<VERSION>.jar`, plus a convenience copy of the `.mcpb` |
 | MCPB bridge (`claude-extension/`) | `mcpb-vX.Y.Z` | `cytoscape-mcp.mcpb`, and publishes to npm and the MCP Registry |
 
-The bridge is versioned independently of the app because it contains no tools — it is
-transport plumbing only. `claude-extension/manifest.json`'s `version` is its source of
-truth and is deliberately *not* kept in step with the JAR version. See
+The bridge is versioned independently of the app because the bridge is distinctly separate deliverable with separate source tree for it to provide a stdio-to-http transport bride that some agents may use. See
 [registry/README.md](registry/README.md) for the release runbook.
 
 ## Cytoscape Desktop MCP Tool Catalog
