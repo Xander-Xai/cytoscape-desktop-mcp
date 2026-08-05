@@ -23,8 +23,18 @@ REGISTRY        := https://registry.modelcontextprotocol.io
 # Pinned release of the third-party mcp-publisher CLI (from
 # modelcontextprotocol/registry) that uploads our registry metadata. This is that
 # tool's own version — unrelated to the bridge version in $(BRIDGE_MANIFEST).
-# Bump manually; upstream tags are v-prefixed.
+#
+# The tarball is verified against a pinned sha256 before extraction, because it is
+# executed in the release job while an npm token and OIDC credentials are in scope.
+# To bump: change the version, then refresh all four hashes from
+#   https://github.com/modelcontextprotocol/registry/releases/download/<VER>/registry_<VER#v>_checksums.txt
+# An unlisted platform is a hard error rather than an unverified download.
 MCP_PUBLISHER_CLI_VERSION := v1.8.0
+MCP_PUBLISHER_BASE        := https://github.com/modelcontextprotocol/registry/releases/download/$(MCP_PUBLISHER_CLI_VERSION)
+MCP_PUBLISHER_SHA256_linux_amd64  := 1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf
+MCP_PUBLISHER_SHA256_linux_arm64  := c978982c60e1b4903a976de090f04dc4fac4a320daa50704fcad2dbc93433d62
+MCP_PUBLISHER_SHA256_darwin_amd64 := 5350f756e8408d0e22802b7f384af941448358b503eb1e1772979a61b9b99fde
+MCP_PUBLISHER_SHA256_darwin_arm64 := e74f8846c3b5d0428cfeae3f9f520bbf9031d18e68224108c3760d60b6aaf2e0
 
 # Set by GitHub Actions on a `release` event. Overridable for local dry runs.
 TAG             ?= $(GITHUB_REF_NAME)
@@ -107,10 +117,32 @@ check-bridge-version:
 	echo "bridge version $$MAN_VER"
 
 $(PUBLISHER):
-	mkdir -p .tools
+	@mkdir -p .tools
+	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+	ARCH=$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+	PLAT="$${OS}_$${ARCH}"; \
+	case "$$PLAT" in \
+	  linux_amd64)  EXPECTED="$(MCP_PUBLISHER_SHA256_linux_amd64)"  ;; \
+	  linux_arm64)  EXPECTED="$(MCP_PUBLISHER_SHA256_linux_arm64)"  ;; \
+	  darwin_amd64) EXPECTED="$(MCP_PUBLISHER_SHA256_darwin_amd64)" ;; \
+	  darwin_arm64) EXPECTED="$(MCP_PUBLISHER_SHA256_darwin_arm64)" ;; \
+	  *) echo "Error: no pinned sha256 for platform '$$PLAT'."; \
+	     echo "  Add MCP_PUBLISHER_SHA256_$$PLAT to the Makefile from upstream's checksums.txt."; \
+	     exit 1 ;; \
+	esac; \
+	TGZ=".tools/mcp-publisher_$$PLAT.tar.gz"; \
 	curl --proto '=https' --tlsv1.2 -fsSL \
-	  "https://github.com/modelcontextprotocol/registry/releases/download/$(MCP_PUBLISHER_CLI_VERSION)/mcp-publisher_$$(uname -s | tr '[:upper:]' '[:lower:]')_$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-	  | tar xz -C .tools mcp-publisher
+	  "$(MCP_PUBLISHER_BASE)/mcp-publisher_$$PLAT.tar.gz" -o "$$TGZ"; \
+	ACTUAL=$$(openssl dgst -sha256 -r "$$TGZ" | cut -d' ' -f1); \
+	if [ "$$ACTUAL" != "$$EXPECTED" ]; then \
+	  echo "Error: sha256 mismatch for mcp-publisher_$$PLAT.tar.gz ($(MCP_PUBLISHER_CLI_VERSION))"; \
+	  echo "  expected $$EXPECTED"; \
+	  echo "  actual   $$ACTUAL"; \
+	  rm -f "$$TGZ"; exit 1; \
+	fi; \
+	tar xz -C .tools -f "$$TGZ" mcp-publisher; \
+	rm -f "$$TGZ"; \
+	echo "verified mcp-publisher_$$PLAT.tar.gz sha256"
 	@$(PUBLISHER) --version
 
 # Staging and stamping are separate targets so they can be inspected without
@@ -149,6 +181,10 @@ stamp-server-json: check-bridge-version
 	fi; \
 	echo "stamped $(STAMPED) for $$BRIDGE_VER"
 
+# The publisher is a downloaded third-party binary, so it is invoked with
+# NODE_AUTH_TOKEN stripped — only `npm publish` in publish-npm-bridge needs the npm
+# credential. The registry validates the npm package server-side, so the publisher
+# never talks to npm authenticated.
 publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	@BRIDGE_VER=$$(jq -r .version $(BRIDGE_MANIFEST)); \
 	if curl -sf "$(REGISTRY)/v0.1/servers?search=$(SERVER_NAME)" \
@@ -158,7 +194,7 @@ publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	else \
 	  if [ -n "$$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then AUTH=github-oidc; else AUTH=github; fi; \
 	  echo "authenticating with $$AUTH"; \
-	  $(PUBLISHER) login $$AUTH && \
-	  $(PUBLISHER) validate $(STAMPED) && \
-	  $(PUBLISHER) publish $(STAMPED); \
+	  env -u NODE_AUTH_TOKEN $(PUBLISHER) login $$AUTH && \
+	  env -u NODE_AUTH_TOKEN $(PUBLISHER) validate $(STAMPED) && \
+	  env -u NODE_AUTH_TOKEN $(PUBLISHER) publish $(STAMPED); \
 	fi
