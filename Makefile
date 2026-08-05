@@ -20,6 +20,12 @@ PUBLISHER       := .tools/mcp-publisher
 REPO_URL        := https://github.com/cytoscape/cytoscape-desktop-mcp
 REGISTRY        := https://registry.modelcontextprotocol.io
 
+# Pinned release of the third-party mcp-publisher CLI (from
+# modelcontextprotocol/registry) that uploads our registry metadata. This is that
+# tool's own version — unrelated to the bridge version in $(BRIDGE_MANIFEST).
+# Bump manually; upstream tags are v-prefixed.
+MCP_PUBLISHER_CLI_VERSION := v1.8.0
+
 # Set by GitHub Actions on a `release` event. Overridable for local dry runs.
 TAG             ?= $(GITHUB_REF_NAME)
 
@@ -102,8 +108,10 @@ check-bridge-version:
 
 $(PUBLISHER):
 	mkdir -p .tools
-	curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$$(uname -s | tr '[:upper:]' '[:lower:]')_$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+	curl --proto '=https' --tlsv1.2 -fsSL \
+	  "https://github.com/modelcontextprotocol/registry/releases/download/$(MCP_PUBLISHER_CLI_VERSION)/mcp-publisher_$$(uname -s | tr '[:upper:]' '[:lower:]')_$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
 	  | tar xz -C .tools mcp-publisher
+	@$(PUBLISHER) --version
 
 # Staging and stamping are separate targets so they can be inspected without
 # invoking anything that could actually publish.
@@ -134,6 +142,11 @@ stamp-server-json: check-bridge-version
 	   --arg sha "$$SHA" \
 	   '.version = $$v | (.packages[] | select(.registryType == "mcpb")) |= (.identifier = $$url | .fileSha256 = $$sha) | (.packages[] | select(.registryType == "npm")).version = $$v' \
 	   $(SERVER_JSON) > $(STAMPED); \
+	LEFT=$$(grep -o '__[A-Z0-9_]*__' $(STAMPED) | sort -u | tr '\n' ' '); \
+	if [ -n "$$LEFT" ]; then \
+	  echo "Error: unsubstituted tokens in $(STAMPED): $$LEFT"; \
+	  echo "  (a jq path in stamp-server-json no longer matches $(SERVER_JSON))"; exit 1; \
+	fi; \
 	echo "stamped $(STAMPED) for $$BRIDGE_VER"
 
 publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json

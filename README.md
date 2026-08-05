@@ -6,8 +6,7 @@
 [mcp]: https://modelcontextprotocol.io/
 [ndex]: https://www.ndexbio.org/
 
-Cytoscape MCP Server
-=======================================
+# Cytoscape MCP Server
 
 An embedded [Model Context Protocol (MCP)][mcp] server for [Cytoscape Desktop][cytoscape], packaged as a Cytoscape App. AI clients such as Claude Desktop connect to Cytoscape over HTTP and invoke tools that control the desktop application directly — loading networks, setting active views, and more.
 
@@ -108,7 +107,7 @@ Two components ship from this repo on separate tag namespaces:
 | Cytoscape App (the MCP server) | `vX.Y.Z` | `cytoscape-mcp-<VERSION>.jar`, plus a convenience copy of the `.mcpb` |
 | MCPB bridge (`claude-extension/`) | `mcpb-vX.Y.Z` | `cytoscape-mcp.mcpb`, and publishes to npm and the MCP Registry |
 
-The bridge is versioned independently of the app because the bridge is distinctly separate deliverable with separate source tree for it to provide a stdio-to-http transport bride that some agents may use. See
+The bridge is versioned independently of the app because the bridge is distinctly separate deliverable with separate source tree for it to provide a stdio-to-http transport bridge that some agents may use. See
 [registry/README.md](registry/README.md) for the release runbook.
 
 ## Cytoscape Desktop MCP Tool Catalog

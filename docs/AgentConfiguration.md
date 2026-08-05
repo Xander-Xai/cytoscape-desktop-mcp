@@ -2,6 +2,8 @@
 
 **MCP URL:** `http://localhost:{rest.port}/mcp`
 
+The commands below show the port as `{rest.port}` — use Cytoscape's actual CyREST port, which is **1234** unless you changed it under **Edit > Preferences > REST API**.
+
 Cytoscape must be running with this app installed. The app will run an mcp server that runs under the existing Cyrest port.
 
 Multiple agents can connect simultaneously. Cytoscape is a single-user application — concurrent agents may issue conflicting commands.
@@ -94,7 +96,7 @@ To verify: run `codex mcp list` or type `/mcp` inside the Codex TUI.
 
 This server is published to the official MCP Registry as:
 
-```
+```text
 io.github.cytoscape/cytoscape-desktop-mcp-bridge
 ```
 

@@ -3,7 +3,7 @@
   "name": "io.github.cytoscape/cytoscape-desktop-mcp-bridge",
   "title": "Cytoscape Desktop MCP",
   "description": "Drive a running Cytoscape Desktop to load, lay out, and style biological networks.",
-  "version": "0.0.0",
+  "version": "__BRIDGE_VERSION__",
   "websiteUrl": "https://github.com/cytoscape/cytoscape-desktop-mcp",
   "repository": {
     "url": "https://github.com/cytoscape/cytoscape-desktop-mcp",
@@ -12,8 +12,8 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/cytoscape/cytoscape-desktop-mcp/releases/download/PLACEHOLDER/cytoscape-mcp.mcpb",
-      "fileSha256": "PLACEHOLDER",
+      "identifier": "https://github.com/cytoscape/cytoscape-desktop-mcp/releases/download/__BRIDGE_RELEASE_TAG__/cytoscape-mcp.mcpb",
+      "fileSha256": "__BRIDGE_MCPB_SHA256__",
       "transport": {
         "type": "stdio"
       },
@@ -29,7 +29,7 @@
     {
       "registryType": "npm",
       "identifier": "@cytoscape/cytoscape-desktop-mcp-bridge",
-      "version": "0.0.0",
+      "version": "__BRIDGE_VERSION__",
       "transport": {
         "type": "stdio"
       },

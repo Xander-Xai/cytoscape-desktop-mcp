@@ -1,12 +1,16 @@
 name: Release
 
 # Two components ship from this repo on separate tag namespaces:
-#   vX.Y.Z        -> Cytoscape App JAR  (release-app)
+#   vX.Y.Z        -> Cytoscape App JAR  (build-release)
 #   mcpb-vX.Y.Z   -> MCPB bridge        (release-mcpb, publishes npm + MCP Registry)
 #
 # The `release` event supports only `types:` filtering — there is no tag-pattern
 # filter as with `on: push: tags:` — so the branch is a job-level `if:`. Both jobs
 # trigger on every release and one always reports as skipped. That is expected.
+#
+# The release tag is always passed to shell steps through `env:` and referenced as
+# "$RELEASE_TAG". Git allows `;`, `&`, backticks and `$()` in tag names, so
+# interpolating ${{ }} directly into a `run:` body would let a tag execute code.
 on:
   release:
     types: [published]
@@ -22,6 +26,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -33,19 +39,24 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    # The app JAR accepts RC tags (vX.Y.Z-rc.N). The bridge deliberately does not
+    # — see release-mcpb below. The asymmetry is intentional; don't harmonize them.
     - name: Extract and validate version from tag
       id: version
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
       run: |
-        TAG="${{ github.event.release.tag_name }}"
-        VERSION="${TAG#v}"
+        VERSION="${RELEASE_TAG#v}"
         if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
           echo "Error: version '$VERSION' is not valid semver (expected X.Y.Z or X.Y.Z-rc.N)"
           exit 1
         fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Build release JAR
-      run: xvfb-run make install-release VERSION=${{ steps.version.outputs.version }}
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: xvfb-run make install-release VERSION="$VERSION"
 
     # Convenience copy of the bridge bundle, so the app release page stays
     # self-sufficient for users. The registry only ever pins the copy attached
@@ -54,13 +65,15 @@ jobs:
       run: make build_claude_mcpb
 
     - name: Upload artifacts to release
-      run: |
-        gh release upload "${{ github.event.release.tag_name }}" \
-          "build/libs/cytoscape-mcp-${{ steps.version.outputs.version }}.jar" \
-          "build/cytoscape-mcp.mcpb" \
-          --clobber
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        gh release upload "$RELEASE_TAG" \
+          "build/libs/cytoscape-mcp-$VERSION.jar" \
+          "build/cytoscape-mcp.mcpb" \
+          --clobber
 
   release-mcpb:
     name: Release MCPB bridge
@@ -73,6 +86,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     # No JDK: build_claude_mcpb is pure cp/zip, and nothing here touches Gradle.
     - name: Set up Node.js
@@ -81,26 +96,25 @@ jobs:
         node-version: 'lts/*'
         registry-url: https://registry.npmjs.org
 
-    # Fails loudly if the tag and claude-extension/manifest.json disagree.
+    # Fails loudly if the tag and claude-extension/manifest.json disagree. The
+    # published version is always the tag minus the mcpb-v prefix, so there is no
+    # RC special case: to ship a prerelease you set the manifest to that version.
     - name: Verify tag matches bridge manifest
-      run: make check-bridge-version TAG=${{ github.event.release.tag_name }}
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: make check-bridge-version TAG="$RELEASE_TAG"
 
     - name: Build bundle
       run: make build_claude_mcpb
 
     - name: Upload bundle to release
-      run: |
-        gh release upload "${{ github.event.release.tag_name }}" \
-          "build/cytoscape-mcp.mcpb" \
-          --clobber
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: gh release upload "$RELEASE_TAG" "build/cytoscape-mcp.mcpb" --clobber
 
-    # RC tags build and upload but never publish: an RC would otherwise consume
-    # the version in the registry and pin the RC's asset permanently, after which
-    # the guard would silently skip the final release.
     - name: Publish to npm and the MCP Registry
-      if: "!contains(github.event.release.tag_name, '-rc.')"
-      run: make publish-registry TAG=${{ github.event.release.tag_name }}
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: make publish-registry TAG="$RELEASE_TAG"

@@ -10,7 +10,7 @@ io.github.cytoscape/cytoscape-desktop-mcp-bridge
 
 ## What the user must have installed
 
-Whatever a client installs from this registry entry — the `.mcpb` or the npm package it is just the bridge, it still requires user to provide the Cytosscape Desktop as well, refer to [Bridge Requirements](../claude-extension/server/README.md#prerequisites--read-this-first)
+Either packaging — the `.mcpb` or the npm package — is just the bridge. The user still has to supply Cytoscape Desktop; see [Bridge Requirements](../claude-extension/server/README.md#prerequisites--read-this-first).
 
 ## What gets published, and what does not
 
@@ -33,7 +33,7 @@ These are parallel, not layered — a client picks whichever it supports; neithe
 
 The `mcpb-vX.Y.Z` gh release tag encoding restates that same number, and `make check-bridge-version` fails the release if they disagree. 
 
-Consequence: app releases will not trigger the release workflow to publish the mcpb registry bundles. Only release tags prefixed with `mcpb-v` will intiate publishing a registry bundle.
+Consequence: app releases will not trigger the release workflow to publish the mcpb registry bundles. Only release tags prefixed with `mcpb-v` will initiate publishing a registry bundle.
 
 ## Cutting a bridge release
 
@@ -62,7 +62,6 @@ Note `mcp-publisher validate` checks shape against the live registry but **not**
 
 ## Gotchas
 
-- **Do not delete or retag the bridge release** the entry points at. `identifier` pins that release's asset, and it stays pinned across later app releases.
-- Registry versions are append-only. Withdrawing one uses `mcp-publisher status`, not deletion.
-- `description` is capped at **100 characters** by the registry schema — shorter than the `.mcpb` manifest's description, which is why they differ.
-- Metadata-only changes here (description, `websiteUrl`) cannot be published without a bridge version bump, since the guard keys on the version.
+- **Never delete or retag a published `mcpb-v` release.** The registry entry points straight at that release's `.mcpb` file, so removing it breaks installs for anyone on that version.
+- **Published versions can't be taken back.** To correct a bad release, bump the version and publish again.
+- **Editing `server.json` on its own changes nothing.** Publishing skips any version already in the registry, so an edit only goes live with a version bump.
