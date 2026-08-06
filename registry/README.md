@@ -46,10 +46,12 @@ Both publishes are guarded by existence checks, so re-running the job is safe.
 
 ## Local mcpb and registry builds (publishes nothing)
 
+`X.Y.Z` is the `version` field in `claude-extension/manifest.json`.
+
 ```bash
 make build_claude_mcpb
-make stamp-server-json TAG=mcpb-v1.0.2   # -> build/server.json
-make stage-npm-bridge  TAG=mcpb-v1.0.2   # -> build/npm-staging/
+make stamp-server-json TAG=mcpb-vX.Y.Z   # -> build/server.json
+make stage-npm-bridge  TAG=mcpb-vX.Y.Z   # -> build/npm-staging/
 .tools/mcp-publisher validate build/server.json
 npm publish ./build/npm-staging --access public --dry-run
 ```
@@ -63,7 +65,7 @@ No secrets. Both publishes authenticate with the release job's GitHub OIDC ident
 - **MCP Registry** — `mcp-publisher login github-oidc` exchanges the OIDC token for a registry JWT scoped to `io.github.cytoscape/*`.
 - **npm** — [trusted publishing](https://docs.npmjs.com/trusted-publishers/), configured on the package at npmjs.com: organization `cytoscape`, repository `cytoscape-desktop-mcp`, workflow filename `release.yml`, allowed action `npm publish`.
 
-Do not add an `NPM_TOKEN`. `setup-node` writes `_authToken=${NODE_AUTH_TOKEN}` into `.npmrc`; if that resolves to an empty string npm sends a blank credential and fails with 401 rather than falling back to OIDC.
+The release workflow must not set `registry-url` on `setup-node`. That makes npm use a placeholder credential instead of the OIDC exchange. The registry is pinned in the bridge package's `publishConfig` instead.
 
 Trusted publishing cannot create a package — npm requires it to exist first — so the very first version of a new package must be published manually by a member of the `cytoscape` org.
 

@@ -25,7 +25,8 @@ REGISTRY        := https://registry.modelcontextprotocol.io
 # tool's own version — unrelated to the bridge version in $(BRIDGE_MANIFEST).
 #
 # The tarball is verified against a pinned sha256 before extraction, because it is
-# executed in the release job while an npm token and OIDC credentials are in scope.
+# executed in the release job while it holds OIDC publish rights to npm and the
+# MCP Registry.
 # To bump: change the version, then refresh all four hashes from
 #   https://github.com/modelcontextprotocol/registry/releases/download/<VER>/registry_<VER#v>_checksums.txt
 # An unlisted platform is a hard error rather than an unverified download.
@@ -181,10 +182,8 @@ stamp-server-json: check-bridge-version
 	fi; \
 	echo "stamped $(STAMPED) for $$BRIDGE_VER"
 
-# Neither publish uses a stored credential: npm authenticates via trusted
-# publishing and the publisher via `login github-oidc`, both from the job's
-# GitHub OIDC identity. There is no npm token in the environment to shield the
-# downloaded publisher binary from.
+# Both publishes authenticate with the job's GitHub OIDC identity: npm via
+# trusted publishing, the registry via `login github-oidc`.
 publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	@BRIDGE_VER=$$(jq -r .version $(BRIDGE_MANIFEST)); \
 	if curl -sf "$(REGISTRY)/v0.1/servers?search=$(SERVER_NAME)" \

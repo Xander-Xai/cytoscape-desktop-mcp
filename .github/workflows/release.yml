@@ -90,13 +90,15 @@ jobs:
         persist-credentials: false
 
     # No JDK: build_claude_mcpb is pure cp/zip, and nothing here touches Gradle.
-    # registry-url is still required so npm targets npmjs.org; lts/* satisfies
-    # trusted publishing's npm >= 11.5.1 / node >= 22.14 requirement.
+    # lts/* satisfies trusted publishing's npm >= 11.5.1 / node >= 22.14.
+    #
+    # Do not add `registry-url`: it makes setup-node write an .npmrc holding a
+    # placeholder credential, which npm would send instead of performing the OIDC
+    # exchange. The registry is pinned in the bridge package's publishConfig.
     - name: Set up Node.js
       uses: actions/setup-node@v5
       with:
         node-version: 'lts/*'
-        registry-url: https://registry.npmjs.org
         package-manager-cache: false
 
     # Fails loudly if the tag and claude-extension/manifest.json disagree. The
@@ -116,12 +118,9 @@ jobs:
         RELEASE_TAG: ${{ github.event.release.tag_name }}
       run: gh release upload "$RELEASE_TAG" "build/cytoscape-mcp.mcpb" --clobber
 
-    # No npm token: both publishes authenticate with the job's GitHub OIDC identity.
-    # npm uses trusted publishing (configured on the package at npmjs.com), and
-    # mcp-publisher exchanges the same OIDC token for a registry JWT. Do not add
-    # NODE_AUTH_TOKEN back — setup-node writes _authToken=${NODE_AUTH_TOKEN} into
-    # .npmrc, and an empty value makes npm send a blank credential and 401 instead
-    # of falling back to OIDC.
+    # Both publishes use the job's OIDC identity: npm via trusted publishing
+    # (configured on the package at npmjs.com), the MCP Registry via
+    # `mcp-publisher login github-oidc`.
     - name: Publish to npm and the MCP Registry
       env:
         RELEASE_TAG: ${{ github.event.release.tag_name }}
