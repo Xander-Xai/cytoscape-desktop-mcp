@@ -38,11 +38,57 @@ Consequence: app releases will not trigger the release workflow to publish the m
 ## Cutting a bridge release
 
 1. Bump `version` in `claude-extension/manifest.json` to `X.Y.Z`.
-2. Create tag `mcpb-vX.Y.Z` as part of GitHub Release. `release-mcpb` then asserts the version, builds, uploads, publishes to npm, validates, and publishes to the registry.
-3. Confirm: `npm view @cytoscape/cytoscape-desktop-mcp-bridge mcpName` and
-   `curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.cytoscape/cytoscape-desktop-mcp-bridge"`
+2. Publish a GitHub Release with the tag `mcpb-vX.Y.Z`.
 
-Both publishes are guarded by existence checks, so re-running the job is safe.
+The tag starts the `release-mcpb` job, which checks the tag matches the manifest, builds the `.mcpb`, attaches it to the release, and then publishes twice — once to npm, once to the MCP Registry.
+
+Confirm both landed:
+
+```bash
+npm view @cytoscape/cytoscape-desktop-mcp-bridge version
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.cytoscape/cytoscape-desktop-mcp-bridge"
+```
+
+### Re-running is safe
+
+The two publishes are independent, and each one checks whether that version is already out there before doing anything:
+
+- npm already has `X.Y.Z` → prints `already on npm, skipping` and carries on
+- the registry already has `X.Y.Z` → prints `already in registry, skipping publish`
+
+So if one half fails you can re-run the job: it completes the missing half and leaves the finished half alone. It is also why publishing an npm version by hand does not block a release — npm gets skipped and the registry still publishes.
+
+## First-time npm setup (already done, for reference)
+
+npm can only hand publishing rights to a GitHub workflow for a package that already exists. So the first version of the bridge had to be pushed up by hand, and only then could CI take over. This was done once, for `1.0.3`. You would only need it again if the package were renamed.
+
+### 1. Publish the first version by hand
+
+From `main`, as a member of the `cytoscape` npm org:
+
+```bash
+npm login
+make stage-npm-bridge TAG=mcpb-vX.Y.Z
+npm publish ./build/npm-staging --access public --dry-run   # check the file list
+npm publish ./build/npm-staging --access public
+npm view @cytoscape/cytoscape-desktop-mcp-bridge version mcpName
+```
+
+`mcpName` must come back as `io.github.cytoscape/cytoscape-desktop-mcp-bridge`. That field is how the MCP Registry confirms this npm package belongs to the project; without it the registry publish is rejected.
+
+### 2. Let the workflow publish from then on
+
+On npmjs.com, open the package → **Settings** → **Trusted Publisher** → **GitHub Actions**, and enter:
+
+| Field | Value |
+|---|---|
+| Organization or user | `cytoscape` |
+| Repository | `cytoscape-desktop-mcp` |
+| Workflow filename | `release.yml` |
+| Environment name | *leave blank* |
+| Allowed actions | `npm publish` |
+
+Values are case-sensitive, and a package can have only one trusted publisher at a time. From here on npm trusts that one workflow in that one repository, so `release.yml` publishes without any stored password.
 
 ## Local mcpb and registry builds (publishes nothing)
 
@@ -63,11 +109,9 @@ Note `mcp-publisher validate` checks shape against the live registry but **not**
 No secrets. Both publishes authenticate with the release job's GitHub OIDC identity, which is why it declares `permissions: id-token: write`.
 
 - **MCP Registry** — `mcp-publisher login github-oidc` exchanges the OIDC token for a registry JWT scoped to `io.github.cytoscape/*`.
-- **npm** — [trusted publishing](https://docs.npmjs.com/trusted-publishers/), configured on the package at npmjs.com: organization `cytoscape`, repository `cytoscape-desktop-mcp`, workflow filename `release.yml`, allowed action `npm publish`.
+- **npm** — [trusted publishing](https://docs.npmjs.com/trusted-publishers/). The workflow is trusted by the package itself; see [First-time npm setup](#first-time-npm-setup-already-done-for-reference).
 
 The release workflow must not set `registry-url` on `setup-node`. That makes npm use a placeholder credential instead of the OIDC exchange. The registry is pinned in the bridge package's `publishConfig` instead.
-
-Trusted publishing cannot create a package — npm requires it to exist first — so the very first version of a new package must be published manually by a member of the `cytoscape` org.
 
 ## Gotchas
 
