@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [mcpb-v1.0.3] - 2026-08-06
+
+- Added support for releasing and publishing the MCP bridge (MCPB) to the MCP Registry and npm, so the bridge can be picked up by agentic marketplaces and "Install Now" style wrappers. Release CI now builds the `cytoscape-mcp.mcpb` bundle, publishes `@cytoscape/cytoscape-desktop-mcp-bridge` to npm, and submits `registry/server.json` (with the resolved version, release tag, and bundle SHA-256) to the MCP Registry. [pull/14](https://github.com/cytoscape/cytoscape-desktop-mcp/pull/14)
+
 ## [1.0.2] - 2026-05-25
 
 - Fix mcp app reload during restart of desktop to be consistent, it was susceptible to be skipped due to race conditions in osgi timing.
