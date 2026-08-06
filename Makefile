@@ -25,7 +25,8 @@ REGISTRY        := https://registry.modelcontextprotocol.io
 # tool's own version — unrelated to the bridge version in $(BRIDGE_MANIFEST).
 #
 # The tarball is verified against a pinned sha256 before extraction, because it is
-# executed in the release job while an npm token and OIDC credentials are in scope.
+# executed in the release job while it holds OIDC publish rights to npm and the
+# MCP Registry.
 # To bump: change the version, then refresh all four hashes from
 #   https://github.com/modelcontextprotocol/registry/releases/download/<VER>/registry_<VER#v>_checksums.txt
 # An unlisted platform is a hard error rather than an unverified download.
@@ -181,10 +182,8 @@ stamp-server-json: check-bridge-version
 	fi; \
 	echo "stamped $(STAMPED) for $$BRIDGE_VER"
 
-# The publisher is a downloaded third-party binary, so it is invoked with
-# NODE_AUTH_TOKEN stripped — only `npm publish` in publish-npm-bridge needs the npm
-# credential. The registry validates the npm package server-side, so the publisher
-# never talks to npm authenticated.
+# Both publishes authenticate with the job's GitHub OIDC identity: npm via
+# trusted publishing, the registry via `login github-oidc`.
 publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	@BRIDGE_VER=$$(jq -r .version $(BRIDGE_MANIFEST)); \
 	if curl -sf "$(REGISTRY)/v0.1/servers?search=$(SERVER_NAME)" \
@@ -194,7 +193,7 @@ publish-registry: $(PUBLISHER) publish-npm-bridge stamp-server-json
 	else \
 	  if [ -n "$$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then AUTH=github-oidc; else AUTH=github; fi; \
 	  echo "authenticating with $$AUTH"; \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) login $$AUTH && \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) validate $(STAMPED) && \
-	  env -u NODE_AUTH_TOKEN $(PUBLISHER) publish $(STAMPED); \
+	  $(PUBLISHER) login $$AUTH && \
+	  $(PUBLISHER) validate $(STAMPED) && \
+	  $(PUBLISHER) publish $(STAMPED); \
 	fi
