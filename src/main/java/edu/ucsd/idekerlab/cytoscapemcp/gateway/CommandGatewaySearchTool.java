@@ -113,9 +113,18 @@ public class CommandGatewaySearchTool {
     static final String OUTPUT_SCHEMA = McpSchema.toSchemaJson(SearchResults.class);
 
     private final CommandService commandService;
+    private final Runnable ensureIndexed;
 
-    public CommandGatewaySearchTool(CommandService commandService) {
+    /**
+     * @param commandService Lucene-backed command index (nullable — see {@link #handle})
+     * @param ensureIndexed builds the index if this is its first read, then returns. This is the
+     *     only trigger for the initial index build: the app deliberately does no scanning at
+     *     startup, because scanning calls {@code AvailableCommands.getArguments()}, which registers
+     *     a scaffold network and would suppress Cytoscape's Starter Panel. Nullable for tests.
+     */
+    public CommandGatewaySearchTool(CommandService commandService, Runnable ensureIndexed) {
         this.commandService = commandService;
+        this.ensureIndexed = ensureIndexed;
     }
 
     public McpServerFeatures.SyncToolSpecification toSpec() {
@@ -160,6 +169,10 @@ public class CommandGatewaySearchTool {
         int max = 10;
         Object maxRaw = args.get("max");
         if (maxRaw instanceof Number n) max = n.intValue();
+
+        if (ensureIndexed != null) {
+            ensureIndexed.run();
+        }
 
         SearchResults results = commandService.search(query, Math.max(1, max));
         if (!results.success()) {

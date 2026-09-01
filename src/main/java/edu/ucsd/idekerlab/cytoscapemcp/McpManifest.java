@@ -63,7 +63,8 @@ public final class McpManifest {
                         /* availableCommands= */ null,
                         /* commandService= */ null,
                         /* tableFactory= */ null,
-                        /* tableManager= */ null);
+                        /* tableManager= */ null,
+                        /* ensureCommandIndexed= */ null);
 
         String toolsSection = renderTools(server.listTools(), mapper);
         String template = loadTemplate();

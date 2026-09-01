@@ -1,6 +1,7 @@
 package edu.ucsd.idekerlab.cytoscapemcp.gateway;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.After;
 import org.junit.Before;
@@ -85,7 +86,9 @@ public class CommandGatewaySearchToolTest {
 
         transport = new InMemoryTransport();
         transport.startServer(
-                "test", "1.0", List.of(new CommandGatewaySearchTool(commandService).toSpec()));
+                "test",
+                "1.0",
+                List.of(new CommandGatewaySearchTool(commandService, null).toSpec()));
     }
 
     @After
@@ -170,7 +173,7 @@ public class CommandGatewaySearchToolTest {
     public void search_nullCommandService_returnsError() throws Exception {
         InMemoryTransport nullTransport = new InMemoryTransport();
         nullTransport.startServer(
-                "test", "1.0", List.of(new CommandGatewaySearchTool(null).toSpec()));
+                "test", "1.0", List.of(new CommandGatewaySearchTool(null, null).toSpec()));
         try {
             nullTransport.send(INIT_REQUEST);
             nullTransport.send(INITIALIZED_NOTIFICATION);
@@ -180,6 +183,57 @@ public class CommandGatewaySearchToolTest {
             assertTrue(response.at("/result/isError").asBoolean());
         } finally {
             nullTransport.close();
+        }
+    }
+
+    /**
+     * The ensureIndexed hook is the app's only trigger for building the command index, so it has to
+     * run before the query, not after. Asserted behaviorally: the hook upserts a command, and the
+     * search finds it only if the hook already ran. See cytoscape-desktop-mcp#15.
+     */
+    @Test
+    public void search_invokesEnsureIndexedBeforeSearching() throws Exception {
+        AtomicInteger hookCalls = new AtomicInteger(0);
+        Runnable ensureIndexed =
+                () -> {
+                    hookCalls.incrementAndGet();
+                    try {
+                        commandService.upsert(
+                                new Command(
+                                        "diffusion diffuse",
+                                        "diffusion",
+                                        "diffuse",
+                                        "Diffuse from selected nodes",
+                                        null,
+                                        "heatColumn",
+                                        "heatColumn",
+                                        null,
+                                        false));
+                    } catch (Exception e) {
+                        throw new IllegalStateException("upsert failed", e);
+                    }
+                };
+
+        InMemoryTransport lazyTransport = new InMemoryTransport();
+        lazyTransport.startServer(
+                "test",
+                "1.0",
+                List.of(new CommandGatewaySearchTool(commandService, ensureIndexed).toSpec()));
+        try {
+            lazyTransport.send(INIT_REQUEST);
+            lazyTransport.send(INITIALIZED_NOTIFICATION);
+            lazyTransport.send(searchCall("diffuse", 10));
+            lazyTransport.await();
+
+            JsonNode content =
+                    lastResponse(lazyTransport.getResponse()).at("/result/structuredContent");
+            assertTrue(content.path("success").asBoolean());
+            assertEquals(1, hookCalls.get());
+            assertEquals(
+                    "diffusion diffuse",
+                    content.path("results").get(0).path("commandKey").asText());
+        } finally {
+            lazyTransport.close();
         }
     }
 
