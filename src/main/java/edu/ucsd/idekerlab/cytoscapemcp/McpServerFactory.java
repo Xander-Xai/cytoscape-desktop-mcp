@@ -102,6 +102,8 @@ public final class McpServerFactory {
      * @param visualStyleFactory factory for creating new visual styles (nullable)
      * @param availableCommands Cytoscape command registry for gateway tools (nullable)
      * @param commandService Lucene-backed command index for gateway search (nullable)
+     * @param ensureCommandIndexed builds the command index on its first read; the only trigger for
+     *     the initial build, since the app does no scanning at startup (nullable)
      * @param tableFactory Cytoscape table factory for creating standalone tables (nullable)
      * @param tableManager Cytoscape table manager for registering tables (nullable)
      */
@@ -131,7 +133,8 @@ public final class McpServerFactory {
             AvailableCommands availableCommands,
             CommandService commandService,
             CyTableFactory tableFactory,
-            CyTableManager tableManager) {
+            CyTableManager tableManager,
+            Runnable ensureCommandIndexed) {
 
         // Explicitly supply jsonMapper and jsonSchemaValidator to bypass McpJsonDefaults,
         // which uses ServiceLoader with the Thread context classloader — that classloader
@@ -263,7 +266,7 @@ public final class McpServerFactory {
                         .toSpec());
 
         // Gateway tools — Desktop command discovery, schema retrieval, and invocation.
-        server.addTool(new CommandGatewaySearchTool(commandService).toSpec());
+        server.addTool(new CommandGatewaySearchTool(commandService, ensureCommandIndexed).toSpec());
         server.addTool(new CommandGatewayGetTool(availableCommands).toSpec());
         server.addTool(
                 new CommandGatewayInvokeTool(

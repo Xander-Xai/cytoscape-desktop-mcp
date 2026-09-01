@@ -58,6 +58,8 @@ public class CommandETLService {
     private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean scanInProgress = new AtomicBoolean(false);
     private final AtomicBoolean rescanRequested = new AtomicBoolean(false);
+    private volatile boolean shuttingDown = false;
+    private volatile boolean firstScanSucceeded = false;
 
     public CommandETLService(
             AvailableCommands availableCommands,
@@ -77,8 +79,17 @@ public class CommandETLService {
     /**
      * Non-blocking. Submits a scan if none is running; otherwise marks rescanRequested so the
      * running scan loops once more after it finishes.
+     *
+     * <p>No-op once {@link #setShuttingDown()} has been called: Cytoscape's shutdown stops peer
+     * bundles, and the {@code BundleListener} in CyActivator would otherwise translate each {@code
+     * BundleEvent.STOPPED} into a scan that creates and destroys a scaffold network while the
+     * framework is tearing down.
      */
     public void scheduleScan() {
+        if (shuttingDown) {
+            LOGGER.debug("Shutting down — ETL scan not scheduled");
+            return;
+        }
         if (!scanInProgress.compareAndSet(false, true)) {
             rescanRequested.set(true);
             return;
@@ -90,12 +101,41 @@ public class CommandETLService {
                             rescanRequested.set(false);
                             performScan();
                         } while (rescanRequested.compareAndSet(true, false));
+                        firstScanSucceeded = true;
                     } catch (Exception e) {
                         LOGGER.error("ETL scan failed", e);
                     } finally {
                         scanInProgress.set(false);
                     }
                 });
+    }
+
+    /**
+     * Marks the service as shutting down so no further scan is scheduled. Must be driven by {@code
+     * CyShutdownEvent} rather than the bundle's own stop hook: {@code ShutdownHandler} fires that
+     * event before calling {@code rootBundle.stop()}, so by the time this bundle stops, peer
+     * bundles have already emitted the {@code BundleEvent.STOPPED} events that would trigger scans.
+     */
+    public void setShuttingDown() {
+        shuttingDown = true;
+    }
+
+    /**
+     * Ensures the index has been built at least once, blocking until it has. Cheap and safe to call
+     * on every gateway search: returns immediately once a scan has succeeded.
+     *
+     * <p>Correct for concurrent callers without extra synchronization. {@link #scheduleScan} flips
+     * {@code scanInProgress} with a CAS <em>before</em> submitting, so a caller that loses that CAS
+     * still observes the flag set and {@link #awaitIdle} blocks it until the in-flight scan (and
+     * any rescan it loops into) has finished. A scan that threw leaves {@code firstScanSucceeded}
+     * false, so the next call retries rather than serving an empty index forever.
+     *
+     * @return true if the index has been built, false on timeout or while shutting down
+     */
+    public boolean ensureFirstIndex(long timeout, TimeUnit unit) throws InterruptedException {
+        if (firstScanSucceeded) return true;
+        scheduleScan();
+        return awaitIdle(timeout, unit) && firstScanSucceeded;
     }
 
     /** Stops the scan executor. Called from CyActivator.shutDown(). */

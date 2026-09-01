@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-08-31
+
+- Fixed the app suppressing Cytoscape's Starter Panel on startup: building the command index registered a temporary network that raced Cytoscape's one-time "is this session empty?" check, leaving `View > Show Starter Panel` permanently unresponsive. The index is now built lazily on the first `command_gateway_search` call rather than at startup, and no longer refreshes during shutdown. [pull/19](https://github.com/cytoscape/cytoscape-desktop-mcp/pull/19)
+
 ## [mcpb-v1.0.3] - 2026-08-06
 
 - Added support for releasing and publishing the MCP bridge (MCPB) to the MCP Registry and npm, so the bridge can be picked up by agentic marketplaces and "Install Now" style wrappers. Release CI now builds the `cytoscape-mcp.mcpb` bundle, publishes `@cytoscape/cytoscape-desktop-mcp-bridge` to npm, and submits `registry/server.json` (with the resolved version, release tag, and bundle SHA-256) to the MCP Registry. [pull/14](https://github.com/cytoscape/cytoscape-desktop-mcp/pull/14)

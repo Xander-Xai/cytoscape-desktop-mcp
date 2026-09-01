@@ -30,6 +30,7 @@ import edu.ucsd.idekerlab.cytoscapemcp.ui.McpStatusPanel;
 import org.cytoscape.app.event.AppsFinishedStartingEvent;
 import org.cytoscape.app.event.AppsFinishedStartingListener;
 import org.cytoscape.application.CyApplicationManager;
+import org.cytoscape.application.events.CyShutdownListener;
 import org.cytoscape.application.swing.CySwingApplication;
 import org.cytoscape.command.AvailableCommands;
 import org.cytoscape.command.CommandExecutorTaskFactory;
@@ -73,12 +74,16 @@ public class CyActivator extends AbstractCyActivator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CyActivator.class);
 
+    /** Upper bound on how long a gateway search waits for the initial command index build. */
+    private static final long INDEX_BUILD_TIMEOUT_SECONDS = 30;
+
     private volatile McpSyncServer mcpServer;
     private volatile McpTransportProvider transportProvider;
     private volatile BundleContext bundleContext;
     private volatile CommandService commandService;
     private volatile CommandETLService commandETLService;
     private final AtomicBoolean initDone = new AtomicBoolean(false);
+    private final AtomicBoolean commandIndexActivated = new AtomicBoolean(false);
     private volatile ServiceTracker<InputStreamTaskFactory, InputStreamTaskFactory>
             cxServiceTracker;
     private final CxServiceTrackerFactory cxServiceTrackerFactory;
@@ -164,17 +169,34 @@ public class CyActivator extends AbstractCyActivator {
                 };
         registerService(bc, listener, AppsFinishedStartingListener.class, new Properties());
 
-        // Dynamic-install path: when the app is installed via the app store while Cytoscape is
-        // already running, AppsFinishedStartingEvent has already fired and will never fire again.
-        // Use a ServiceTracker on cytoscapeCxNetworkReaderFactory instead of calling
-        // initializeApp() directly. For a true dynamic install, the CX IO service is already
-        // registered so addingService() fires synchronously on open() — no race. During initial
-        // startup this tracker fires when org.cytoscape.io.cx activates (bundle 132), which
-        // also ensures all peers are up; initDone prevents double-init if AppsFinishedStartingEvent
-        // fires around the same time.
+        // Stop scheduling ETL scans as soon as Cytoscape begins shutting down. This has to hang off
+        // CyShutdownEvent rather than shutDown(): ShutdownHandler fires that event and only then
+        // calls rootBundle.stop(), so by the time this bundle stops, peer bundles have already
+        // emitted the BundleEvent.STOPPED notifications that activateCommandIndex()'s listener
+        // translates into scans.
+        CyShutdownListener shutdownListener =
+                event -> {
+                    CommandETLService etl = commandETLService;
+                    if (etl != null) {
+                        etl.setShuttingDown();
+                        LOGGER.info("CyShutdownEvent received — ETL scans disabled");
+                    }
+                };
+        registerService(bc, shutdownListener, CyShutdownListener.class, new Properties());
+
+        // Second init path, needed because AppsFinishedStartingEvent has already fired (and will
+        // never fire again) when the app is installed from the app store into a running Cytoscape.
+        // A ServiceTracker on cytoscapeCxNetworkReaderFactory covers that case.
+        //
+        // Note this test does NOT tell a dynamic install apart from a cold start. AvailableCommands
+        // comes from the command-executor-impl framework bundle, up long before any app, so the
+        // reference is non-null either way. On a cold start the tracker fires during startup —
+        // synchronously inside open() if cx-support (a bundled core app) is already registered.
+        // initDone makes whichever path wins the only one that initializes. That is fine because
+        // neither path touches the Cytoscape data model any more; the command index is built lazily
+        // on first read (see activateCommandIndex).
         if (bc.getServiceReference(AvailableCommands.class) != null) {
-            LOGGER.info(
-                    "Desktop already running — installing ServiceTracker for dynamic-install init");
+            LOGGER.info("Installing ServiceTracker on the CX reader service as a second init path");
             try {
                 Filter filter =
                         bc.createFilter(
@@ -192,6 +214,12 @@ public class CyActivator extends AbstractCyActivator {
 
     @Override
     public void shutDown() {
+        // Covers the lifecycle CyShutdownEvent does not: this bundle being stopped on its own when
+        // the user disables or uninstalls the app while Cytoscape keeps running.
+        CommandETLService etl = commandETLService;
+        if (etl != null) {
+            etl.setShuttingDown();
+        }
         if (cxServiceTracker != null) {
             cxServiceTracker.close();
             cxServiceTracker = null;
@@ -351,20 +379,8 @@ public class CyActivator extends AbstractCyActivator {
                 availableCommands,
                 commandService,
                 tableFactory,
-                tableManager);
-
-        // Trigger initial ETL scan and register OSGi BundleListener for push updates.
-        if (commandETLService != null) {
-            commandETLService.scheduleScan();
-            bundleContext.addBundleListener(
-                    event -> {
-                        int type = event.getType();
-                        if (type == BundleEvent.STARTED || type == BundleEvent.STOPPED) {
-                            commandETLService.scheduleScan();
-                        }
-                    });
-            LOGGER.info("CommandETLService started; BundleListener registered for push ETL");
-        }
+                tableManager,
+                this::activateCommandIndex);
 
         // Read the CyREST port for display in the status panel.
         @SuppressWarnings("unchecked")
@@ -411,6 +427,52 @@ public class CyActivator extends AbstractCyActivator {
                 });
     }
 
+    /**
+     * Builds the gateway command index on its first read, then starts keeping it fresh. Invoked by
+     * {@code CommandGatewaySearchTool} — the only reader of the index — and by nothing else.
+     *
+     * <p>This is deliberately the sole trigger. Scanning calls {@code
+     * AvailableCommands.getArguments()}, which registers a {@code
+     * cy:command_documentation_generation} scaffold network in CyNetworkManager (either ours, or
+     * one AvailableCommandsImpl creates per command). Doing that during Cytoscape startup makes
+     * {@code CytoscapeDesktop.handleEvent(AppsFinishedStartingEvent)} see a non-empty network set
+     * and skip {@code showStarterPanel()} — and because {@code isStarterPanelVisible()} reports
+     * true for a panel that was never added to its container, the View menu toggle can then never
+     * bring it back. Building on first read means nothing happens until an MCP client actually
+     * searches, which is necessarily after startup. See cytoscape-desktop-mcp#15.
+     *
+     * <p>The BundleListener is registered here rather than at init for the same reason: its job is
+     * to refresh an index that exists, so it comes into being when the index does. Registration is
+     * once-only; rebuilding after a failed first scan is handled by {@code ensureFirstIndex}.
+     */
+    void activateCommandIndex() {
+        CommandETLService etl = commandETLService;
+        if (etl == null) {
+            LOGGER.warn("Command index unavailable — CommandETLService was not initialized");
+            return;
+        }
+        if (commandIndexActivated.compareAndSet(false, true)) {
+            LOGGER.info("First command index read — registering BundleListener for push ETL");
+            bundleContext.addBundleListener(
+                    event -> {
+                        int type = event.getType();
+                        if (type == BundleEvent.STARTED || type == BundleEvent.STOPPED) {
+                            etl.scheduleScan();
+                        }
+                    });
+        }
+        try {
+            // Serve whatever is indexed rather than failing the MCP call if this times out.
+            if (!etl.ensureFirstIndex(INDEX_BUILD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                LOGGER.warn(
+                        "Command index not ready after {}s — serving partial index",
+                        INDEX_BUILD_TIMEOUT_SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void startMcpServer(
             CyProperty<Properties> cyProperties,
             CyApplicationManager appManager,
@@ -434,7 +496,8 @@ public class CyActivator extends AbstractCyActivator {
             AvailableCommands availableCommands,
             CommandService commandService,
             CyTableFactory tableFactory,
-            CyTableManager tableManager) {
+            CyTableManager tableManager,
+            Runnable ensureCommandIndexed) {
 
         transportProvider = new McpTransportProvider();
 
@@ -469,7 +532,8 @@ public class CyActivator extends AbstractCyActivator {
                         availableCommands,
                         commandService,
                         tableFactory,
-                        tableManager);
+                        tableManager,
+                        ensureCommandIndexed);
         LOGGER.info("MCP sync server built");
 
         // Register McpEndpoint as an OSGi service under its concrete class type.

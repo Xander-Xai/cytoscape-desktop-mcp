@@ -244,6 +244,72 @@ public class CommandETLServiceTest {
         verify(availableCommands, times(2)).getNamespaces();
     }
 
+    // -- shutdown guard and first-index build ---------------------------------
+
+    /**
+     * Cytoscape's shutdown stops peer bundles, and CyActivator's BundleListener turns every
+     * BundleEvent.STOPPED into a scan. Scanning registers a scaffold network, so it must not happen
+     * while the framework is tearing down. See cytoscape-desktop-mcp#15.
+     */
+    @Test
+    public void scheduleScan_afterSetShuttingDown_neverSubmits() throws Exception {
+        stubOneCommand();
+        when(appMgr.getCurrentNetwork()).thenReturn(null);
+
+        etlService.setShuttingDown();
+        etlService.scheduleScan();
+        assertTrue(etlService.awaitIdle(2, TimeUnit.SECONDS));
+
+        verify(networkMgr, never()).addNetwork(any(), anyBoolean());
+        verify(networkFactory, never()).createNetwork(any(SavePolicy.class));
+        verify(availableCommands, never()).getNamespaces();
+        assertTrue(commandService.getAllCommandKeys().isEmpty());
+    }
+
+    @Test
+    public void ensureFirstIndex_buildsIndexAndReturnsTrue() throws Exception {
+        stubOneCommand();
+
+        assertTrue(etlService.ensureFirstIndex(5, TimeUnit.SECONDS));
+        assertEquals(Set.of("network select"), commandService.getAllCommandKeys());
+    }
+
+    @Test
+    public void ensureFirstIndex_calledTwice_scansOnlyOnce() throws Exception {
+        stubOneCommand();
+
+        assertTrue(etlService.ensureFirstIndex(5, TimeUnit.SECONDS));
+        assertTrue(etlService.ensureFirstIndex(5, TimeUnit.SECONDS));
+
+        // getNamespaces() is called once per scan body.
+        verify(availableCommands, times(1)).getNamespaces();
+    }
+
+    /**
+     * A first scan that threw must not latch: the index would stay empty for the rest of the
+     * session. The next call has to retry.
+     */
+    @Test
+    public void ensureFirstIndex_afterFailedScan_retriesAndSucceeds() throws Exception {
+        stubMinimal("network", "select");
+        when(availableCommands.getCommands("network")).thenReturn(List.of("select"));
+        when(availableCommands.getNamespaces())
+                .thenThrow(new RuntimeException("registry unavailable"))
+                .thenReturn(List.of("network"));
+
+        assertFalse(etlService.ensureFirstIndex(5, TimeUnit.SECONDS));
+        assertTrue(etlService.ensureFirstIndex(5, TimeUnit.SECONDS));
+        assertEquals(Set.of("network select"), commandService.getAllCommandKeys());
+    }
+
+    @Test
+    public void ensureFirstIndex_whileShuttingDown_returnsFalseWithoutScanning() throws Exception {
+        etlService.setShuttingDown();
+
+        assertFalse(etlService.ensureFirstIndex(2, TimeUnit.SECONDS));
+        verify(networkMgr, never()).addNetwork(any(), anyBoolean());
+    }
+
     // -- scaffold lifecycle ---------------------------------------------------
 
     @Test
@@ -319,6 +385,13 @@ public class CommandETLServiceTest {
     }
 
     // -- Helpers --------------------------------------------------------------
+
+    /** Stubs AvailableCommands to expose exactly one command, {@code network select}. */
+    private void stubOneCommand() {
+        stubMinimal("network", "select");
+        when(availableCommands.getNamespaces()).thenReturn(List.of("network"));
+        when(availableCommands.getCommands("network")).thenReturn(List.of("select"));
+    }
 
     /** Stub the minimum required AvailableCommands calls for one command with no arguments. */
     private void stubMinimal(String ns, String cmd) {
