@@ -69,7 +69,24 @@ jobs:
           artifact: ${{ runner.temp }}/artifacts/bridge.tgz
           evidence: ${{ runner.temp }}/out/bridge/evidence.json
           policy: strict-scanner-completeness
-      - name: Upload Cytoscape evidence
+      - name: Verify MCPB tamper control
+        id: mcpb_negative
+        continue-on-error: true
+        uses: Xander-Xai/mcp-evidence-gate@06567c840c1d68a4b45ff2d12d6e6c32898fff11
+        with:
+          receipt: ${{ runner.temp }}/out/mcpb/receipt.json
+          artifact: ${{ runner.temp }}/artifacts/cytoscape-mcp.mcpb
+          evidence: ${{ runner.temp }}/out/mcpb/evidence.json
+          policy: strict-scanner-completeness
+      - name: Verify bridge tamper control
+        id: bridge_negative
+        continue-on-error: true
+        uses: Xander-Xai/mcp-evidence-gate@06567c840c1d68a4b45ff2d12d6e6c32898fff11
+        with:
+          receipt: ${{ runner.temp }}/out/bridge/receipt.json
+          artifact: ${{ runner.temp }}/artifacts/bridge.tgz
+          evidence: ${{ runner.temp }}/out/bridge/evidence.json
+          policy: strict-scanner-completeness      - name: Upload Cytoscape evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
